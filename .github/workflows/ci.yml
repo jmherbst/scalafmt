@@ -10,57 +10,14 @@ on:
     types: [published]
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        java: [adopt@1.8, adopt@1.11]
-        os: [windows-latest, ubuntu-latest]
-        exclude:
-          - os: windows-latest
-            java: adopt@1.8
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v2
-      - uses: olafurpg/setup-scala@v13
-        with:
-          java-version: ${{ matrix.java }}
-      - run: git fetch --tags -f
-      - run:
-          # for GitOps tests
-          git config --global user.email "scalafmt@scalameta.org" && git config --global user.name "scalafmt"
-      - run: TEST="2.12" sbt ci-test
-        shell: bash
-      - run: TEST="2.13" sbt ci-test
-        shell: bash
-  formatting:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: olafurpg/setup-scala@v13
-      - run: ./scalafmt --test
-      - run: yarn install
-      - run: yarn format-check
   native-image:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macOS-latest, ubuntu-latest]
-        libc: [default, musl]
-        exclude:
-          - os: macOS-latest
-            libc: musl
+        os: [ubuntu-latest]
+        libc: [ musl]
         include:
-          - os: macOS-latest
-            artifact: scalafmt-macos
-            env:
-              NATIVE_IMAGE_STATIC: false
-          - os: ubuntu-latest
-            libc: default
-            artifact: scalafmt-linux-glibc
-            env:
-              NATIVE_IMAGE_STATIC: true
           - os: ubuntu-latest
             libc: musl
             artifact: scalafmt-linux-musl
@@ -85,18 +42,8 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: scalafmt
-      - name: Upload release
-        if: github.event_name == 'release'
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: scalafmt
-          asset_name: ${{ matrix.artifact }}
-          asset_content_type: application/zip
   dockerize:
-    needs: [native-image,test]
+    needs: [native-image]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'release'
     steps:
@@ -113,14 +60,14 @@ jobs:
         with:
           name: scalafmt-linux-musl
           path: tmp/scalafmt-linux-musl
-      - name: Login to DockerHub
-        uses: docker/login-action@v1
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+      # - name: Login to DockerHub
+      #   uses: docker/login-action@v1
+      #   with:
+      #     username: ${{ secrets.DOCKER_USERNAME }}
+      #     password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Build and push
         uses: docker/build-push-action@v2
         with:
           context: .
-          push: true
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
